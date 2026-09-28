@@ -2,6 +2,16 @@
 
 本文件记录面向用户的变化。每个版本的这一节会原样作为该版本 Release 的说明。
 
+## 0.1.18
+
+### 修复
+
+- **dsh 0.1.7 装不上这个插件**([#13](https://github.com/zexadev/dsh-tether/issues/13))。dsh 从 0.1.7 起会按插件声明的兼容范围拦安装:范围没覆盖当前 runtime 就直接拒装,而本插件的范围停在 0.1.5 族,于是 0.1.6 和 0.1.7 的用户一律被拒(0.1.6 本身没有这道闸,照装不提示)。范围放宽到 0.1.7 族。放宽之前 0.1.6-alpha.2 与 0.1.7-rc.2 都逐条实测过:插件加载与 sidecar、浏览器认证的 cookie 兑换与逐请求注入、注入进界面的手机版式、三条路由与跨站栅栏(伪 Host / 跨站标记 / 跨源 Origin 全部 403)、目录选择器补丁、以及经 P2P 代理流取到的界面与电脑上直接打开的逐字一致。
+
+### English
+
+dsh 0.1.7 started refusing to install plugins whose declared compatibility range does not cover the running dsh, and this plugin still declared up to the 0.1.5 family — so everyone on 0.1.6 or 0.1.7 was turned away at install time. The range now covers the 0.1.7 family, after verifying both 0.1.6-alpha.2 and 0.1.7-rc.2 end to end: pairing over P2P, browser-auth cookie exchange and per-request injection, the phone layout injected into the interface, the three plugin routes with their cross-site guard, the directory-picker patch, and the interface fetched through the proxy stream matching the one served locally byte for byte.
+
 ## 0.1.17
 
 ### 修复
