@@ -8,7 +8,7 @@
 // 不改成「空实现直接成功」:那会让两个写者同时改一份会话日志时都以为自己拿到了锁。手机上确实
 // 只有一个 dsh 进程,但空实现一旦哪天不成立,坏的是用户的会话日志,而 koffi 这条路没有这个代价。
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { findCopies } from './android-link-fallback.mjs'
 
 const FILE = '@deepseek-ai/node-addon-system/lib/flock.js'
 const FIND = "    if (platform !== 'linux' && platform !== 'darwin') {"
@@ -35,12 +35,15 @@ function __tetherAndroidFlock() {
 }
 `
 
-/** 给 flock 加载器加 android 分支 */
+/** 给 flock 加载器加 android 分支。同一个包可能在树里有多份副本,每份都要打 */
 export function patchFlock(nodeModules) {
-  const path = join(nodeModules, FILE)
-  const src = readFileSync(path, 'utf8')
-  const hits = src.split(FIND).length - 1
-  if (hits !== 1) throw new Error(`${FILE}: 期望恰好一处平台闸,实际 ${hits} 处(dsh 版本变了?)`)
-  if (src.includes('__tetherAndroidFlock')) throw new Error(`${FILE}: 已经打过补丁`)
-  writeFileSync(path, PRELUDE + src.replace(FIND, INTO))
+  const copies = findCopies(nodeModules, FILE)
+  if (copies.length === 0) throw new Error(`${FILE}: 树里找不到,npm 布局或 dsh 版本变了`)
+  for (const path of copies) {
+    const src = readFileSync(path, 'utf8')
+    const hits = src.split(FIND).length - 1
+    if (hits !== 1) throw new Error(`${path}: 期望恰好一处平台闸,实际 ${hits} 处(dsh 版本变了?)`)
+    if (src.includes('__tetherAndroidFlock')) throw new Error(`${path}: 已经打过补丁`)
+    writeFileSync(path, PRELUDE + src.replace(FIND, INTO))
+  }
 }

@@ -107,32 +107,75 @@ const preludeFor = (file) => PRELUDES[file.endsWith('.cjs') ? 'cjs' : 'esm']
 // 带参数的 link( / linkSync( 调用;unlink( symlink( 前面是字母,\b 不成立;注释里的 link() 没参数
 const LINK_CALL = /\b(?:link|linkSync)\(\s*[\w$]/
 
+/**
+ * 树里每一个 node_modules 目录(含自己)。npm 的提升不是契约:上游发了 0.1.5-rc.3 之后,
+ * `^` 范围把整个 @deepseek-ai 子树挪进了 dsh/node_modules,写死顶层路径直接 ENOENT。
+ */
+function nodeModulesDirs(root) {
+  const dirs = [root]
+  for (const e of readdirSync(root, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue
+    const pkgDirs = e.name.startsWith('@')
+      ? readdirSync(join(root, e.name), { withFileTypes: true })
+          .filter((s) => s.isDirectory())
+          .map((s) => join(root, e.name, s.name))
+      : [join(root, e.name)]
+    for (const pkg of pkgDirs) {
+      const nested = join(pkg, 'node_modules')
+      if (existsSync(nested)) dirs.push(...nodeModulesDirs(nested))
+    }
+  }
+  return dirs
+}
+
+/** 一个包文件在树里的所有副本。同名包可能有多份,每一份都会被 require 到,所以全都要打 */
+export function findCopies(nodeModules, relative) {
+  return nodeModulesDirs(nodeModules)
+    .map((dir) => join(dir, relative))
+    .filter((p) => existsSync(p))
+}
+
+/** @deepseek-ai 各包的 lib 目录,任意嵌套层级 */
+function dshLibDirs(nodeModules) {
+  const libs = []
+  for (const dir of nodeModulesDirs(nodeModules)) {
+    const scope = join(dir, '@deepseek-ai')
+    if (!existsSync(scope)) continue
+    for (const pkg of readdirSync(scope, { withFileTypes: true })) {
+      if (!pkg.isDirectory()) continue
+      const lib = join(scope, pkg.name, 'lib')
+      if (existsSync(lib)) libs.push(lib)
+    }
+  }
+  return libs
+}
+
 /** 打补丁并确认 @deepseek-ai 各包 lib 里不再有未经处理的硬链接调用 */
 export function patchHardLinks(nodeModules) {
   const patched = new Set()
   for (const { file, find, into } of SITES) {
-    const path = join(nodeModules, file)
-    const src = readFileSync(path, 'utf8')
-    const hits = src.split(find).length - 1
-    if (hits !== 1) throw new Error(`${file}: 期望恰好一处 \`${find}\`,实际 ${hits} 处(dsh 版本变了?)`)
-    const prelude = patched.has(path) ? '' : preludeFor(file)
-    patched.add(path)
-    writeFileSync(path, prelude + src.replace(find, into))
+    const copies = findCopies(nodeModules, file)
+    if (copies.length === 0) throw new Error(`${file}: 树里找不到,npm 布局或 dsh 版本变了`)
+    for (const path of copies) {
+      const src = readFileSync(path, 'utf8')
+      const hits = src.split(find).length - 1
+      if (hits !== 1) throw new Error(`${path}: 期望恰好一处 \`${find}\`,实际 ${hits} 处(dsh 版本变了?)`)
+      const prelude = patched.has(path) ? '' : preludeFor(file)
+      patched.add(path)
+      writeFileSync(path, prelude + src.replace(find, into))
+    }
   }
   const left = []
-  const scope = join(nodeModules, '@deepseek-ai')
-  for (const pkgDir of readdirSync(scope)) {
-    const lib = join(scope, pkgDir, 'lib')
-    if (existsSync(lib)) walkJs(lib, (p) => {
-      // 注入的 helper 里那一处 link 是本意,跳过前导段再扫
-      const text = readFileSync(p, 'utf8')
-      const own = Object.values(PRELUDES).find((v) => text.startsWith(v))
-      const skip = own ? own.split('\n').length - 1 : 0
-      text.split('\n').slice(skip).forEach((line, i) => {
-        if (LINK_CALL.test(line)) left.push(`${p}:${skip + i + 1}: ${line.trim()}`)
-      })
+  // 只扫各包的 lib:dist 里打包进去的语法高亮语料等资源会撞上 LINK_CALL,那是噪音不是调用
+  for (const lib of dshLibDirs(nodeModules)) walkJs(lib, (p) => {
+    // 注入的 helper 里那一处 link 是本意,跳过前导段再扫
+    const text = readFileSync(p, 'utf8')
+    const own = Object.values(PRELUDES).find((v) => text.startsWith(v))
+    const skip = own ? own.split('\n').length - 1 : 0
+    text.split('\n').slice(skip).forEach((line, i) => {
+      if (LINK_CALL.test(line)) left.push(`${p}:${skip + i + 1}: ${line.trim()}`)
     })
-  }
+  })
   if (left.length) throw new Error(`还有未处理的硬链接调用,Android 上会 EACCES:\n${left.join('\n')}`)
 }
 

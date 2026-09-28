@@ -218,7 +218,11 @@ async function assemble() {
   copyFileSync(join(rt, 'openssl.cnf'), join(stage, 'openssl.cnf'))
   cpSync(join(bundle, 'node_modules'), join(stage, 'app', 'node_modules'), { recursive: true })
   copyFileSync(join(bundle, 'package.json'), join(stage, 'app', 'package.json'))
-  const prebuild = join(stage, 'app', 'node_modules', 'node-pty', 'prebuilds', 'android-arm64')
+  // mkdirSync 会把路径凭空造出来,所以 node-pty 万一不在顶层(npm 的提升不是契约),
+  // pty.node 会被放进一个没人 require 的空目录,手机上的终端静默失效。先断言。
+  const pty = join(stage, 'app', 'node_modules', 'node-pty')
+  if (!existsSync(pty)) throw new Error(`node-pty 不在 ${pty},npm 布局变了`)
+  const prebuild = join(pty, 'prebuilds', 'android-arm64')
   mkdirSync(prebuild, { recursive: true })
   copyFileSync(join(rt, 'pty.node'), join(prebuild, 'pty.node'))
   // Android 不许 App 建硬链接,dsh 里用 link 发布文件的两处换成回退实现,见 android-link-fallback.mjs
