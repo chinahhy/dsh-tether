@@ -15,6 +15,9 @@ if (!pid) { console.error('App 没在跑:', PKG); process.exit(1) }
 const socks = sh('cat /proc/net/unix').split('\n').filter((l) => l.includes(`webview_devtools_remote_${pid}`))
 if (!socks.length) { console.error('没找到 WebView 调试 socket(不是 debug 包?)'); process.exit(1) }
 spawnSync(ADB, ['forward', 'tcp:9229', `localabstract:webview_devtools_remote_${pid}`])
+// 转发一建就活到 adb server 结束,本机任何进程都能顺着它驱动这个 WebView(CDP 没有鉴权可言)。
+// 脚本跑完就撤掉,别把这扇门一直敞着。抛异常退出时也会走到这里,Ctrl-C 不会。
+process.on('exit', () => spawnSync(ADB, ['forward', '--remove', 'tcp:9229']))
 const pages = await (await fetch('http://127.0.0.1:9229/json')).json()
 if (cmd === 'pages') { for (const p of pages) console.log(p.type, p.url, p.title); process.exit(0) }
 // App 自己的页面在 tauri 源;dsh 的 iframe 是另一个 target,按需选
