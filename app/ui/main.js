@@ -3,7 +3,7 @@ const { listen } = window.__TAURI__.event
 const notification = window.__TAURI__.notification
 
 /** 项目主页;为空则主机页底部不显示入口 */
-const PROJECT_URL = 'https://github.com/zexadev/dsh-tether'
+const PROJECT_URL = 'https://github.com/chinahhy/dsh-tether'
 
 const el = (id) => document.getElementById(id)
 const views = { hosts: el('view-hosts'), pair: el('view-pair'), status: el('view-status') }
