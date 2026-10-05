@@ -1,12 +1,9 @@
 //! DSH Tether 手机端 Rust 核心:iroh 连接、配对、审批事件转发。
 //!
-//! 前端只做渲染与两个按钮;连接生命周期全在这层。按「打开 app 时连接」设计,
-//! 无后台常驻(Android doze 语义下这是产品决定,不是缺陷)。
+//! iOS 专版核心:前端负责渲染,连接生命周期、配对与本地代理都在这层。
 
 use std::path::PathBuf;
 
-#[cfg(target_os = "android")]
-mod local;
 
 use anyhow::{bail, Context as _, Result};
 use tether_core::i18n::t;
@@ -27,9 +24,6 @@ struct AppState {
     outgoing: Mutex<Option<mpsc::Sender<Wire>>>,
     /// 本地代理监听端口;WebView 指向它即拿到主机的完整 dsh web UI
     proxy_port: Mutex<Option<u16>>,
-    /// 本地模式:手机上跑着的 dsh(仅 Android arm64 构建有)
-    #[cfg(target_os = "android")]
-    local: Mutex<Option<local::LocalHost>>,
 }
 
 /// 一台已配对主机
@@ -349,91 +343,23 @@ struct LocalStatus {
     url: Option<String>,
 }
 
-/// 本地模式状态:这个构建有没有运行时、dsh 是否在跑、在跑的话 WebView 该加载哪个 URL
+/// iOS 专版不提供“手机本地运行 DSH”。保留命令作为前端兼容层，入口会自动隐藏。
 #[tauri::command]
-async fn local_status(app: AppHandle) -> LocalStatus {
-    #[cfg(target_os = "android")]
-    {
-        let state = app.state::<AppState>();
-        let mut guard = state.local.lock().await;
-        // 进程死了就当没在跑,免得把死 URL 交给 WebView
-        if guard.as_mut().is_some_and(|h| !h.alive()) {
-            *guard = None;
-        }
-        return LocalStatus {
-            available: local::available(),
-            running: guard.is_some(),
-            url: guard.as_ref().map(|h| h.url()),
-        };
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        LocalStatus { available: false, running: false, url: None }
-    }
-}
-
-/// 起本机 dsh;已在跑就直接返回现有 URL
-#[tauri::command]
-async fn local_start(app: AppHandle) -> Result<String, String> {
-    #[cfg(target_os = "android")]
-    {
-        let state = app.state::<AppState>();
-        let mut guard = state.local.lock().await;
-        if let Some(host) = guard.as_mut() {
-            if host.alive() {
-                return Ok(host.url());
-            }
-            *guard = None;
-        }
-        let (host, url) = local::start(&app).await.map_err(|e| format!("{e:#}"))?;
-        *guard = Some(host);
-        // 前台通知让系统别在退后台时收掉进程;起不来只影响保活,不影响使用
-        if let Err(e) = tauri_plugin_dshlocal::start_service(&app, "DSH Tether", t("本机 DSH 运行中", "DSH is running on this phone")) {
-            eprintln!("[local] {}{e}", t("前台服务启动失败: ", "the foreground service failed to start: "));
-        }
-        Ok(url)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        Err(t("这个平台没有本地模式", "this platform has no local mode").into())
-    }
+async fn local_status() -> LocalStatus {
+    LocalStatus { available: false, running: false, url: None }
 }
 
 #[tauri::command]
-async fn local_stop(app: AppHandle) {
-    #[cfg(target_os = "android")]
-    {
-        let state = app.state::<AppState>();
-        let host = state.local.lock().await.take();
-        if let Some(host) = host {
-            host.stop().await;
-        }
-        let _ = tauri_plugin_dshlocal::stop_service(&app);
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-    }
+async fn local_start() -> Result<String, String> {
+    Err(t("iOS 专版不提供本地模式", "Local DSH mode is not available in the iOS edition").into())
 }
 
-/// 本机 dsh 的最近输出;启动失败时给用户看原因
 #[tauri::command]
-async fn local_log(app: AppHandle) -> Vec<String> {
-    #[cfg(target_os = "android")]
-    {
-        let state = app.state::<AppState>();
-        return match state.local.lock().await.as_ref() {
-            Some(host) => host.log_tail().await,
-            None => Vec::new(),
-        };
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        Vec::new()
-    }
+async fn local_stop() {}
+
+#[tauri::command]
+async fn local_log() -> Vec<String> {
+    Vec::new()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -441,7 +367,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dshlocal::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             list_hosts,

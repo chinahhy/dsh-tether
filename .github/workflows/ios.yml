@@ -1,0 +1,50 @@
+name: build-ios
+
+on:
+  push:
+    branches: [ios-only]
+  workflow_dispatch:
+
+jobs:
+  unsigned-ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+      - run: pnpm install
+        working-directory: app
+      - run: pnpm exec tauri ios init --ci
+        working-directory: app
+      - run: pnpm exec tauri ios build --ci --no-sign --target aarch64
+        working-directory: app
+      - name: Package unsigned IPA
+        run: |
+          version=$(node -p "require('./package.json').version")
+          out="dsh-tether-ios-$version-unsigned.ipa"
+          ipa=$(find app/src-tauri/gen/apple -name '*.ipa' | head -1)
+          if [ -n "$ipa" ]; then
+            cp "$ipa" "$out"
+          else
+            app=$(find app/src-tauri/gen/apple -name '*.app' -type d | head -1)
+            test -n "$app" || { echo 'iOS build produced no .app'; exit 1; }
+            mkdir -p Payload
+            cp -R "$app" Payload/
+            zip -qry "$out" Payload
+          fi
+          shasum -a 256 "$out"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dsh-tether-ios-unsigned
+          path: 'dsh-tether-ios-*-unsigned.ipa'
+          if-no-files-found: error
