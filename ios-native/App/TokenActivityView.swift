@@ -183,12 +183,12 @@ struct TokenActivityView: View {
             return mixed % 8 < 2 ? 0 : (mixed / 8 + 2) * factor
         }
         switch provider {
-        case .deepseek: count(salt: 13, factor: 1_950)
-        case .codex: count(salt: 37, factor: 2_600)
-        case .kimi: count(salt: 71, factor: 850)
+        case .deepseek: return count(salt: 13, factor: 1_950)
+        case .codex: return count(salt: 37, factor: 2_600)
+        case .kimi: return count(salt: 71, factor: 850)
         case .all:
-            count(salt: 13, factor: 1_950) + count(salt: 37, factor: 2_600) +
-            count(salt: 71, factor: 850)
+            return count(salt: 13, factor: 1_950) + count(salt: 37, factor: 2_600) +
+                count(salt: 71, factor: 850)
         }
     }
 }
