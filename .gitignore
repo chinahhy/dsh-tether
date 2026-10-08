@@ -7,3 +7,14 @@ packages/
 
 # Android 本地模式的运行时打包产物,由 scripts/build-android-runtime.mjs 生成
 app/src-tauri/android-runtime/
+
+# Native iOS preview: all generated data stays inside this checkout.
+ios-native/ProtocolKit/.build/
+ios-native/ProtocolKit/.cache/
+ios-native/ProtocolKit/.config/
+ios-native/ProtocolKit/.security/
+ios-native/.tools/
+ios-native/.derivedData/
+ios-native/dist/
+ios-native/*.xcodeproj/
+ios-native/App/Info.plist
