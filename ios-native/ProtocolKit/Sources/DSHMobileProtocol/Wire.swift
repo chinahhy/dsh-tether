@@ -1,5 +1,28 @@
 import Foundation
 
+/// The Mac displays the endpoint ID and short-lived numeric code as one string.
+/// Whitespace may be introduced when copying a visually wrapped field.
+public struct PairingTicket: Equatable, Sendable {
+    public let endpointId: String
+    public let code: String
+
+    public init?(raw: String) {
+        let compact = raw.unicodeScalars.filter {
+            !CharacterSet.whitespacesAndNewlines.contains($0)
+        }.map(String.init).joined()
+        let parts = compact.split(separator: "#", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0].utf8.count == 64,
+              parts[0].utf8.allSatisfy({
+                  ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 70) || ($0 >= 97 && $0 <= 102)
+              }),
+              parts[1].utf8.count == 6,
+              parts[1].utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
+        else { return nil }
+        endpointId = String(parts[0]).lowercased()
+        code = String(parts[1])
+    }
+}
+
 /// The existing tether-core Wire enum, without transport or identity storage.
 /// This package deliberately cannot open a network connection or touch DSH data.
 public enum TetherWire: Equatable, Sendable {

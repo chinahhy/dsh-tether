@@ -16,6 +16,11 @@ struct ProtocolSmoke {
         precondition(partial == [])
         let completed = try buffer.append(Data([10]))
         precondition(completed == [.pair(code: "123456", name: "iPhone")])
+        let endpointId = String(repeating: "aB12", count: 16)
+        let ticket = PairingTicket(raw: "\(endpointId.prefix(40))\n\(endpointId.suffix(24))#123456")
+        precondition(ticket?.endpointId == endpointId.lowercased())
+        precondition(ticket?.code == "123456")
+        precondition(PairingTicket(raw: "123456") == nil)
         do {
             _ = try TetherWireCodec.decode(Data(repeating: 65, count: 513), unpaired: true)
             fatalError("oversized unpaired line accepted")

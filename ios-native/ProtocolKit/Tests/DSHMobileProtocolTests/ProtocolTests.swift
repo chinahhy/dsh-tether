@@ -3,6 +3,16 @@ import XCTest
 @testable import DSHMobileProtocol
 
 final class ProtocolTests: XCTestCase {
+    func testPairingTicketAcceptsMacFullStringAndWrappedClipboard() {
+        let id = String(repeating: "aB12", count: 16)
+        let ticket = PairingTicket(raw: "  \(id.prefix(40))\n\(id.suffix(24))# 123456 \n")
+        XCTAssertEqual(ticket?.endpointId, id.lowercased())
+        XCTAssertEqual(ticket?.code, "123456")
+        XCTAssertNil(PairingTicket(raw: "123456"))
+        XCTAssertNil(PairingTicket(raw: "\(id)#12345"))
+        XCTAssertNil(PairingTicket(raw: "\(id)#123456#extra"))
+    }
+
     func testWireUsesHostTagsAndSnakeCaseFields() throws {
         let messages: [TetherWire] = [
             .hello(name: "iPhone"), .pair(code: "123456", name: "iPhone"), .proxy,

@@ -395,7 +395,10 @@ private struct SettingsScreen: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("配对新电脑").font(.headline)
-                    TextField("电脑 ID#六位配对码", text: $pairing)
+                    Text("在 Mac 的「iPhone 远程连接」中生成配对串，整串粘贴到下面。# 前是电脑 ID，# 后才是 6 位数字。已配对过的电脑请点上方「重新连接」。")
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
+                    TextField("粘贴完整配对串（电脑 ID#6 位码）", text: $pairing)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     TextField("设备名称", text: $label)

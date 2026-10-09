@@ -48,18 +48,14 @@ final class MobileModel: ObservableObject {
     }
 
     func pair(_ pairing: String, label: String) async {
-        let parts = pairing.trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: "#", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts[0].count == 64,
-              parts[0].allSatisfy({ $0.isHexDigit }),
-              parts[1].count == 6,
-              parts[1].allSatisfy({ $0 >= "0" && $0 <= "9" })
-        else {
+        guard let ticket = PairingTicket(raw: pairing) else {
             errorMessage = MobileConnectionError.invalidPairing.localizedDescription
             return
         }
-        let id = String(parts[0])
-        await establish(id: id, code: String(parts[1]), label: label)
+        // The host rejects Pair for an identity that is already on its allowlist.
+        // A second tap after PairOK must use Hello, even if the user left the code pasted.
+        let known = hosts.contains(where: { $0.id == ticket.endpointId })
+        await establish(id: ticket.endpointId, code: known ? nil : ticket.code, label: label)
     }
 
     func connect(id: String) async {

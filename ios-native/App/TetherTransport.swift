@@ -8,6 +8,7 @@ enum MobileConnectionError: LocalizedError {
     case closed
     case invalidPairing
     case pairingRejected(String)
+    case emptyHTTP
     case invalidHTTP
     case oversizedResponse
     case http(Int)
@@ -16,8 +17,9 @@ enum MobileConnectionError: LocalizedError {
         switch self {
         case .notConnected: "尚未连接电脑"
         case .closed: "与电脑的连接已断开"
-        case .invalidPairing: "配对格式应为「电脑 ID#六位配对码」"
+        case .invalidPairing: "请粘贴 Mac 插件显示的完整配对串：电脑 ID#6 位数字"
         case .pairingRejected(let reason): "配对失败：\(reason)"
+        case .emptyHTTP: "电脑已连接，但代理没有返回网页响应。请在设置中重新连接后重试"
         case .invalidHTTP: "电脑返回了无法读取的响应"
         case .oversizedResponse: "电脑返回的数据超过手机端限制"
         case .http(let status): "电脑请求失败（HTTP \(status)）"
@@ -140,12 +142,16 @@ actor TetherTransport {
         head += "\r\n"
         try await send.writeAll(buf: Data(head.utf8))
         if !body.isEmpty { try await send.writeAll(buf: body) }
-        try await send.finish()
+        // Keep the request half open while the Mac forwards the HTTP response.
+        // Closing the QUIC send half here propagates a TCP FIN to DSH before
+        // the response is read; the WebSocket proxy likewise keeps it open.
         let raw = try await stream.recv().readToEnd(sizeLimit: 32 * 1024 * 1024)
+        try? await send.finish()
         return try Self.parseHTTP(raw)
     }
 
     private static func parseHTTP(_ raw: Data) throws -> Data {
+        guard !raw.isEmpty else { throw MobileConnectionError.emptyHTTP }
         let delimiter = Data("\r\n\r\n".utf8)
         guard let boundary = raw.range(of: delimiter),
               let header = String(data: raw[..<boundary.lowerBound], encoding: .utf8),
