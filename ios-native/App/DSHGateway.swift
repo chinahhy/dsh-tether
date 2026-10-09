@@ -152,7 +152,9 @@ actor DSHGateway {
     }
 
     func sessions() async throws -> [RemoteSession] {
-        let value = try await call("list", args: ["request": .object([:])])
+        // In DSH 0.2.0-rc.2 the Remote method parameter is named `_request`.
+        // Typert uses the source parameter name as the JSON wire key.
+        let value = try await call("list", args: ["_request": .object([:])])
         return value.fields["items"]?.items.compactMap(RemoteSession.init) ?? []
     }
 

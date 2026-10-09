@@ -32,12 +32,16 @@ final class ProtocolTests: XCTestCase {
     }
 
     func testGatewayRequestAndResponseCorrelation() throws {
-        let request = try GatewayRequest(rpcId: "r-1", namespace: "session", method: "list", args: [:])
+        let request = try GatewayRequest(rpcId: "r-1", namespace: "session", method: "list", args: ["_request": .object([:])])
         XCTAssertEqual(request.path, "/api/session/list")
         let encoded = try JSONEncoder().encode(request)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         XCTAssertEqual(body["type"] as? String, "client-request")
         XCTAssertEqual(body["rpcId"] as? String, "r-1")
+        let payload = try XCTUnwrap(body["payload"] as? [String: Any])
+        let args = try XCTUnwrap(payload["args"] as? [String: Any])
+        XCTAssertNotNil(args["_request"] as? [String: Any])
+        XCTAssertNil(args["request"])
         let ok = Data(#"{"type":"server-response","rpcId":"r-1","result":{"ok":true,"value":{"items":[]}}}"#.utf8)
         XCTAssertEqual(try GatewayResponse.value(from: ok, expectedRpcId: "r-1"), .object(["items": .array([])]))
         XCTAssertThrowsError(try GatewayResponse.value(from: ok, expectedRpcId: "other")) {
@@ -46,6 +50,7 @@ final class ProtocolTests: XCTestCase {
         let failure = Data(#"{"type":"server-response","rpcId":"r-1","result":{"ok":false,"error":{"code":"denied","message":"no","details":{}}}}"#.utf8)
         XCTAssertThrowsError(try GatewayResponse.value(from: failure, expectedRpcId: "r-1")) {
             XCTAssertEqual($0 as? GatewayError, .remote(code: "denied", message: "no"))
+            XCTAssertEqual($0.localizedDescription, "DSH 请求失败（denied）：no")
         }
     }
 
