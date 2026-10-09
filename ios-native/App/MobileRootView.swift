@@ -421,13 +421,37 @@ private struct SettingsScreen: View {
                 .settingsCard()
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("插件与 Token 活动", systemImage: "puzzlepiece.extension")
+                    Label("Token 活动", systemImage: "chart.bar.xaxis")
                         .font(.headline)
-                    Text("原生插件管理与用量统计尚未接入真实数据。")
+                    TokenHeatmap(days: model.tokenDays)
+                    Text(model.tokenState)
                         .font(.caption)
                         .foregroundStyle(MobileStyle.muted)
                 }
                 .settingsCard()
+
+                NavigationLink {
+                    PluginListScreen(model: model)
+                } label: {
+                    HStack {
+                        Label("插件", systemImage: "puzzlepiece.extension")
+                            .font(.headline)
+                        Spacer()
+                        Text(model.pluginState)
+                            .font(.caption)
+                            .foregroundStyle(MobileStyle.muted)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                    }
+                }
+                .foregroundStyle(MobileStyle.ink)
+                .settingsCard()
+
+                Button("刷新插件与 Token 活动") {
+                    Task { await model.refreshDetails() }
+                }
+                .disabled(!model.connected)
+                .font(.caption)
 
                 if !model.hosts.isEmpty {
                     Button("清除本机配对与身份", role: .destructive) {
@@ -440,6 +464,9 @@ private struct SettingsScreen: View {
         }
         .background(MobileStyle.canvas)
         .toolbar(.hidden, for: .navigationBar)
+        .task(id: model.connected) {
+            if model.connected { await model.refreshDetails() }
+        }
         .confirmationDialog(
             "清除本机配对？Mac 端记录仍需在电脑上单独撤销。",
             isPresented: $showingClearConfirmation
@@ -448,6 +475,101 @@ private struct SettingsScreen: View {
                 Task { await model.clearPairing() }
             }
         }
+    }
+}
+
+private struct TokenHeatmap: View {
+    let days: [TokenDay]
+    @State private var selected: TokenDay?
+
+    private var peak: Int { max(1, days.map(\.tokens).max() ?? 0) }
+
+    private func color(for day: TokenDay) -> Color {
+        guard day.tokens > 0 else { return MobileStyle.canvas }
+        let ratio = Double(day.tokens) / Double(peak)
+        if ratio < 0.25 { return Color.green.opacity(0.28) }
+        if ratio < 0.5 { return Color.green.opacity(0.48) }
+        if ratio < 0.75 { return Color.green.opacity(0.70) }
+        return Color.green
+    }
+
+    var body: some View {
+        if days.isEmpty {
+            Text("暂无可显示的活动记录")
+                .font(.caption)
+                .foregroundStyle(MobileStyle.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10)
+        } else {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 3) {
+                    ForEach(0..<Int(ceil(Double(days.count) / 7)), id: \.self) { week in
+                        VStack(spacing: 3) {
+                            ForEach(0..<7, id: \.self) { weekday in
+                                let index = week * 7 + weekday
+                                if index < days.count {
+                                    let day = days[index]
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(color(for: day))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 16)
+                                        .onTapGesture { selected = day }
+                                        .accessibilityLabel("\(day.id)，\(day.tokens) Token，\(day.calls) 次调用")
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                if let selected {
+                    Text("\(selected.id) · \(selected.tokens.formatted()) Token · \(selected.calls) 次调用")
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.ink)
+                } else {
+                    Text("近 91 天 · 颜色越深，用量越高 · 点选方格看详情")
+                        .font(.caption2)
+                        .foregroundStyle(MobileStyle.muted)
+                }
+            }
+        }
+    }
+}
+
+private struct PluginListScreen: View {
+    @ObservedObject var model: MobileModel
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(model.plugins) { plugin in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(plugin.name).font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(plugin.enabled ? plugin.phase : "已停用")
+                                .font(.caption)
+                                .foregroundStyle(plugin.phase == "active" ? Color.green : MobileStyle.muted)
+                        }
+                        Text(plugin.moduleName)
+                            .font(.caption2)
+                            .foregroundStyle(MobileStyle.muted)
+                    }
+                    .padding(.vertical, 3)
+                }
+            } header: {
+                Text("电脑上的插件")
+            } footer: {
+                Text("来自 DSH 0.2.0-rc.2 插件清单；当前仅查看运行状态。")
+            }
+        }
+        .navigationTitle("插件")
+        .navigationBarTitleDisplayMode(.inline)
+        .overlay {
+            if model.plugins.isEmpty {
+                ContentUnavailableView(model.pluginState, systemImage: "puzzlepiece.extension")
+            }
+        }
+        .refreshable { await model.refreshDetails() }
     }
 }
 

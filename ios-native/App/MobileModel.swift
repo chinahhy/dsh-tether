@@ -18,6 +18,10 @@ final class MobileModel: ObservableObject {
     @Published private(set) var messages: [RemoteMessage] = []
     @Published private(set) var approvals: [PendingApproval] = []
     @Published private(set) var relayMode = "未知"
+    @Published private(set) var plugins: [RemotePlugin] = []
+    @Published private(set) var pluginState = "连接后读取"
+    @Published private(set) var tokenDays: [TokenDay] = []
+    @Published private(set) var tokenState = "连接后读取"
     @Published var errorMessage: String?
     @Published var selectedSessionId: String?
 
@@ -110,6 +114,10 @@ final class MobileModel: ObservableObject {
         approvals = []
         sessions = []
         messages = []
+        plugins = []
+        pluginState = "连接后读取"
+        tokenDays = []
+        tokenState = "连接后读取"
     }
 
     func clearPairing() async {
@@ -137,6 +145,32 @@ final class MobileModel: ObservableObject {
             relayMode = value.fields["mode"]?.text == "private" ? "自建中继" : "公共中继"
         } catch {
             relayMode = "暂时无法读取"
+        }
+    }
+
+    func refreshDetails() async {
+        guard connected else { return }
+        pluginState = "正在读取…"
+        tokenState = "正在读取…"
+        do {
+            let result = try await gateway.plugins()
+            guard connected else { return }
+            plugins = result
+            pluginState = result.isEmpty ? "没有已配置的插件" : "已读取 \(result.count) 项"
+        } catch {
+            guard connected else { return }
+            plugins = []
+            pluginState = "电脑未提供插件清单"
+        }
+        do {
+            let result = try await gateway.tokenDays()
+            guard connected else { return }
+            tokenDays = result
+            tokenState = result.isEmpty ? "暂无用量记录" : "来自 dsh-cost-meter"
+        } catch {
+            guard connected else { return }
+            tokenDays = []
+            tokenState = "电脑未提供 Token 统计"
         }
     }
 

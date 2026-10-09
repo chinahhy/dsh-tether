@@ -86,6 +86,50 @@ struct PendingApproval: Identifiable, Equatable {
     let reason: String
 }
 
+struct RemotePlugin: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let moduleName: String
+    let enabled: Bool
+    let phase: String
+
+    init?(_ value: JSONValue) {
+        let fields = value.fields
+        guard let id = fields["entryId"]?.text,
+              let moduleName = fields["moduleName"]?.text else { return nil }
+        self.id = id
+        self.moduleName = moduleName
+        let meta = fields["meta"]?.fields ?? [:]
+        let title = meta["title"]
+        self.name = title?.text
+            ?? title?.fields["zh-CN"]?.text
+            ?? title?.fields["zh"]?.text
+            ?? title?.fields["en"]?.text
+            ?? moduleName
+        self.enabled = fields["enabled"]?.boolValue ?? false
+        self.phase = fields["fiberPhase"]?.text ?? "未运行"
+    }
+}
+
+struct TokenDay: Identifiable, Equatable {
+    let id: String
+    let tokens: Int
+    let calls: Int
+
+    init?(_ value: JSONValue) {
+        let fields = value.fields
+        guard let date = fields["date"]?.text,
+              let input = fields["input"]?.numberValue,
+              let output = fields["output"]?.numberValue,
+              let cacheRead = fields["cacheRead"]?.numberValue,
+              let cacheWrite = fields["cacheWrite"]?.numberValue else { return nil }
+        id = date
+        // The cost-meter ledger stores cached tokens in separate buckets.
+        tokens = Int(max(0, input + output + cacheRead + cacheWrite))
+        calls = Int(max(0, fields["calls"]?.numberValue ?? 0))
+    }
+}
+
 actor DSHGateway {
     private let transport: TetherTransport
 
@@ -93,11 +137,13 @@ actor DSHGateway {
         self.transport = transport
     }
 
-    private func call(_ method: String, request: JSONValue? = nil) async throws -> JSONValue {
+    private func call(
+        _ method: String, namespace: String = "session",
+        args: [String: JSONValue] = [:]
+    ) async throws -> JSONValue {
         let rpcId = UUID().uuidString
-        let args: [String: JSONValue] = request.map { ["request": $0] } ?? [:]
         let envelope = try GatewayRequest(
-            rpcId: rpcId, namespace: "session", method: method, args: args
+            rpcId: rpcId, namespace: namespace, method: method, args: args
         )
         let data = try await transport.request(
             path: envelope.path, body: JSONEncoder().encode(envelope)
@@ -106,27 +152,27 @@ actor DSHGateway {
     }
 
     func sessions() async throws -> [RemoteSession] {
-        let value = try await call("list", request: .object([:]))
+        let value = try await call("list", args: ["request": .object([:])])
         return value.fields["items"]?.items.compactMap(RemoteSession.init) ?? []
     }
 
     func create(title: String, cwd: String, mode: String) async throws -> String {
         var fields: [String: JSONValue] = ["agentPreset": .string(mode)]
         if !cwd.isEmpty { fields["cwd"] = .string(cwd) }
-        let created = try await call("create", request: .object(fields))
+        let created = try await call("create", args: ["request": .object(fields)])
         guard let id = created.fields["sessionId"]?.text else {
             throw GatewayError.invalidEnvelope
         }
         if !title.isEmpty {
-            _ = try await call("rename", request: .object([
+            _ = try await call("rename", args: ["request": .object([
                 "sessionId": .string(id), "title": .string(title),
-            ]))
+            ])])
         }
         return id
     }
 
     func prompt(sessionId: String, text: String) async throws {
-        _ = try await call("prompt", request: .object([
+        _ = try await call("prompt", args: ["request": .object([
             "requestId": .string(UUID().uuidString),
             "sessionId": .string(sessionId),
             "mode": .string("queue"),
@@ -134,13 +180,37 @@ actor DSHGateway {
                 "type": .string("text"), "text": .string(text),
             ])]),
             "clientTimeZone": .string(TimeZone.current.identifier),
-        ]))
+        ])])
     }
 
     func cancel(sessionId: String) async throws {
-        _ = try await call("cancel", request: .object([
+        _ = try await call("cancel", args: ["request": .object([
             "sessionId": .string(sessionId),
-        ]))
+        ])])
+    }
+
+    func plugins() async throws -> [RemotePlugin] {
+        let value = try await call("list", namespace: "pluginInventory")
+        return value.fields["entries"]?.items.compactMap(RemotePlugin.init) ?? []
+    }
+
+    func tokenDays() async throws -> [TokenDay] {
+        let calendar = Calendar.current
+        let today = Date()
+        guard let from = calendar.date(byAdding: .day, value: -90, to: today) else {
+            return []
+        }
+        let date = DateFormatter()
+        date.calendar = calendar
+        date.locale = Locale(identifier: "en_US_POSIX")
+        date.dateFormat = "yyyy-MM-dd"
+        let value = try await call("getBillingStatistics", namespace: "costMeter", args: [
+            "query": .object([
+                "from": .string(date.string(from: from)),
+                "to": .string(date.string(from: today)),
+            ]),
+        ])
+        return value.fields["days"]?.items.compactMap(TokenDay.init) ?? []
     }
 
     func relayState() async throws -> JSONValue {
