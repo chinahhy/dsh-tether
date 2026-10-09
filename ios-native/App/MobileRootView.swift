@@ -78,7 +78,7 @@ struct MobileRootView: View {
     }
 }
 
-private struct DeviceToolbar: View {
+private struct DeviceHeader: View {
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "desktopcomputer")
@@ -86,8 +86,15 @@ private struct DeviceToolbar: View {
             Text("Mac mini M4")
                 .foregroundStyle(PreviewStyle.ink)
                 .fontWeight(.semibold)
+                .lineLimit(1)
+            Spacer(minLength: 12)
+            Text("界面预览")
+                .font(.caption)
+                .foregroundStyle(PreviewStyle.muted)
         }
         .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -119,6 +126,7 @@ struct SessionsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                DeviceHeader()
                 PreviewNotice()
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 7) {
@@ -162,10 +170,7 @@ struct SessionsView: View {
             .padding(20)
         }
         .background(PreviewStyle.canvas)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { DeviceToolbar() }
-        }
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingNew) {
             NewSessionSheet(sessions: $sessions)
         }
@@ -356,6 +361,7 @@ struct ConversationView: View {
         .background(PreviewStyle.canvas)
         .navigationTitle(session.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private var approvalCard: some View {
@@ -391,6 +397,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                DeviceHeader()
                 PreviewNotice()
                 VStack(alignment: .leading, spacing: 6) {
                     Text("设置").font(.largeTitle.bold()).foregroundStyle(PreviewStyle.ink)
@@ -435,9 +442,6 @@ struct SettingsView: View {
             .padding(20)
         }
         .background(PreviewStyle.canvas)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { DeviceToolbar() }
-        }
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
