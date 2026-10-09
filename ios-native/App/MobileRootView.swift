@@ -1,10 +1,11 @@
 import SwiftUI
 
 enum MobileStyle {
-    static let blue = Color(red: 0.20, green: 0.40, blue: 0.98)
-    static let canvas = Color(red: 0.97, green: 0.98, blue: 1.00)
-    static let ink = Color(red: 0.08, green: 0.13, blue: 0.23)
-    static let muted = Color(red: 0.54, green: 0.60, blue: 0.70)
+    static let blue = Color(uiColor: .systemBlue)
+    static let canvas = Color(uiColor: .systemGroupedBackground)
+    static let card = Color(uiColor: .secondarySystemGroupedBackground)
+    static let ink = Color.primary
+    static let muted = Color.secondary
 }
 
 private enum WorkMode: String, CaseIterable, Identifiable {
@@ -119,7 +120,7 @@ private struct SessionsScreen: View {
                         .foregroundStyle(MobileStyle.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                        .background(MobileStyle.card, in: RoundedRectangle(cornerRadius: 14))
                 } else {
                     approvalCards
                     TextField("搜索会话或工作区", text: $query)
@@ -205,7 +206,7 @@ private struct SessionCard: View {
             }
         }
         .padding(15)
-        .background(.white, in: RoundedRectangle(cornerRadius: 15))
+        .background(MobileStyle.card, in: RoundedRectangle(cornerRadius: 15))
     }
 }
 
@@ -235,7 +236,7 @@ private struct ApprovalCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.white, in: RoundedRectangle(cornerRadius: 15))
+        .background(MobileStyle.card, in: RoundedRectangle(cornerRadius: 15))
     }
 }
 
@@ -308,7 +309,7 @@ private struct ConversationScreen: View {
                                 .padding(14)
                                 .background(
                                     message.fromUser
-                                        ? MobileStyle.blue.opacity(0.10) : .white,
+                                        ? MobileStyle.blue.opacity(0.14) : MobileStyle.card,
                                     in: RoundedRectangle(cornerRadius: 15)
                                 )
                             if !message.fromUser { Spacer(minLength: 30) }
@@ -324,7 +325,7 @@ private struct ConversationScreen: View {
                 TextField("输入消息…", text: $draft, axis: .vertical)
                     .lineLimit(1...4)
                     .padding(10)
-                    .background(MobileStyle.canvas,
+                    .background(MobileStyle.card,
                                 in: RoundedRectangle(cornerRadius: 12))
                 Button {
                     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -341,7 +342,7 @@ private struct ConversationScreen: View {
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(12)
-            .background(.white)
+            .background(MobileStyle.card)
         }
         .background(MobileStyle.canvas)
         .navigationTitle(session.title)
@@ -577,6 +578,6 @@ private extension View {
     func settingsCard() -> some View {
         self.frame(maxWidth: .infinity, alignment: .leading)
             .padding(17)
-            .background(.white, in: RoundedRectangle(cornerRadius: 15))
+            .background(MobileStyle.card, in: RoundedRectangle(cornerRadius: 15))
     }
 }

@@ -60,11 +60,24 @@ public indirect enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
-public enum GatewayError: Error, Equatable {
+public enum GatewayError: LocalizedError, Equatable {
     case invalidTarget
     case invalidEnvelope
     case rpcIdMismatch
     case remote(code: String, message: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidTarget:
+            return "手机端请求地址无效"
+        case .invalidEnvelope:
+            return "电脑返回的 DSH 响应格式不兼容，请检查两端版本"
+        case .rpcIdMismatch:
+            return "电脑返回了不属于本次请求的响应"
+        case .remote(let code, let message):
+            return "DSH 请求失败（\(code)）：\(message)"
+        }
+    }
 }
 
 public enum GatewayResponse {
