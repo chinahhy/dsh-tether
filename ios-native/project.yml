@@ -1,4 +1,4 @@
-name: DSHMobilePreview
+name: DSHMobile
 options:
   bundleIdPrefix: com.hoya.dsh
   deploymentTarget:
@@ -7,17 +7,21 @@ options:
 packages:
   DSHMobileProtocol:
     path: ProtocolKit
+  IrohLib:
+    url: https://github.com/n0-computer/iroh-ffi.git
+    revision: 5e451092dba0c1a09ee83ff6e5be37b1152a5c58
 targets:
-  DSHMobilePreview:
+  DSHMobile:
     type: application
     platform: iOS
     sources:
       - App
     dependencies:
       - package: DSHMobileProtocol
+      - package: IrohLib
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.hoya.dsh.mobile.preview
+        PRODUCT_BUNDLE_IDENTIFIER: com.hoya.dsh.mobile
         TARGETED_DEVICE_FAMILY: '1'
         SWIFT_VERSION: '5.0'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -25,14 +29,14 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: DSH Mobile Preview
+        CFBundleDisplayName: DSH Mobile
         LSRequiresIPhoneOS: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UILaunchScreen:
           UIColorName: LaunchBackground
 schemes:
-  DSHMobilePreview:
+  DSHMobile:
     build:
       targets:
-        DSHMobilePreview: all
+        DSHMobile: all

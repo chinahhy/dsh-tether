@@ -1,4 +1,4 @@
-name: build-native-ios-preview
+name: build-native-ios
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  unsigned-preview:
+  unsigned-app:
     runs-on: macos-latest
     permissions:
       contents: read
@@ -29,21 +29,22 @@ jobs:
         run: ios-native/.tools/xcodegen/bin/xcodegen generate --spec ios-native/project.yml --project ios-native
       - name: Build unsigned iPhone app
         run: |
-          xcodebuild -project ios-native/DSHMobilePreview.xcodeproj \
-            -scheme DSHMobilePreview -configuration Release \
+          xcodebuild -project ios-native/DSHMobile.xcodeproj \
+            -scheme DSHMobile -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ios-native/.derivedData \
+            -clonedSourcePackagesDirPath ios-native/.packages \
             CODE_SIGNING_ALLOWED=NO build
       - name: Package unsigned IPA
         run: |
-          app=ios-native/.derivedData/Build/Products/Release-iphoneos/DSHMobilePreview.app
+          app=ios-native/.derivedData/Build/Products/Release-iphoneos/DSHMobile.app
           test -d "$app"
           mkdir -p ios-native/dist/Payload
           cp -R "$app" ios-native/dist/Payload/
-          (cd ios-native/dist && zip -qry dsh-mobile-preview-unsigned.ipa Payload)
-          shasum -a 256 ios-native/dist/dsh-mobile-preview-unsigned.ipa
+          (cd ios-native/dist && zip -qry dsh-mobile-unsigned.ipa Payload)
+          shasum -a 256 ios-native/dist/dsh-mobile-unsigned.ipa
       - uses: actions/upload-artifact@v5
         with:
-          name: dsh-mobile-preview-unsigned
-          path: ios-native/dist/dsh-mobile-preview-unsigned.ipa
+          name: dsh-mobile-unsigned
+          path: ios-native/dist/dsh-mobile-unsigned.ipa
           if-no-files-found: error

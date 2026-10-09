@@ -1,36 +1,34 @@
-# DSH Mobile 原生界面试用版
+# DSH Mobile 原生 iPhone 客户端
 
-这是独立的 SwiftUI iPhone 界面试用工程，基于现有 DSH Tether `ios-only` 分支的配套设计。它与现有 Tauri 客户端并行，使用独立 Bundle ID `com.hoya.dsh.mobile.preview`，不会覆盖已在使用的手机 App。
+这是面向现有 DSH Desktop 0.2.0-rc.2 与 `dsh-tether-ios` Mac 插件的独立 SwiftUI 客户端。Bundle ID 为 `com.hoya.dsh.mobile`，不会覆盖既有 Tauri 手机端。最低 iOS 17.5。
 
-## 目前可以试什么
+## 已接入
 
-- 会话列表、搜索、工作模式筛选，以及带标准/PTC/极简/创造模式选择的新建任务页。
-- 原生聊天排版、输入和任务内的批准卡片；所有操作只改变内存中的演示状态。
-- 设置页的设备、中继选择、插件入口和按来源切换的 13 周 Token 活动热力图。
-- `ProtocolKit` 对既有 `dsh-tether/0` JSON-lines Wire 消息和 DSH 0.2.0-rc.2 普通 RPC envelope 的编码、边界及 `rpcId` 校验。
+- 通过官方 iroh Swift 绑定连接现有 `dsh-tether/0` Mac sidecar；首次输入 Mac 插件显示的 `电脑 ID#六位配对码`，以后从本机配对列表重连。
+- iroh 身份私钥保存在 iOS Keychain，已配对电脑名称与 ID 保存在 App 沙盒。Mac 的 DSH 浏览器认证值仅由 sidecar 在受控代理内注入，不进入 iPhone。
+- 通过 iroh 代理流调用同版 DSH Gateway：真实会话列表、新建与命名、工作模式、消息发送、停止、会话实时跟随；工具批准经原有 tether 控制流单次允许或拒绝。
+- 设置页读取 Mac 插件的当前中继模式。中继切换仍由电脑端插件控制；手机端不伪装成已切换。
 
-屏幕始终标明“演示数据 · 尚未连接电脑”。目前**不能**配对、读取真实会话、执行插件、发送消息或批准真实工具调用；中继控件不会切换网络，热力图也不是账户账单。`ProtocolKit` 只做纯数据编解码，尚未接入 iroh Swift 传输、`/api/remote.mux`、真实会话 API 或现有 Mac sidecar。
+## 当前边界
 
-## 构建与验证
+- 原生插件管理、Token 活动数据、附件和图片发送尚未接入；界面不再显示假数据。
+- tether 现有审批控制消息不包含 Session ID，因此批准卡在当前会话和会话列表都可见，不能声称它已与某一个会话准确绑定。
+- 连接由 iOS 前台进程保持；App 进入后台后不承诺持续接收批准或推送。
+- 新 Bundle ID 不继承旧 Tauri App 的配对身份，首次须重新配对。清除本机配对会删除本 App 的 Keychain 身份及沙盒主机簿；Mac 端白名单需要在电脑插件中单独撤销。卸载 iOS App 不保证系统自动清除 Keychain 项。
 
-本项目使用 [XcodeGen 2.46.0](https://github.com/yonaskolb/XcodeGen/releases/tag/2.46.0) 从 `project.yml` 生成 Xcode 工程。CI 的 `build-native-ios-preview` 在 macOS runner 上先运行 Swift package 测试，再构建 iPhone arm64 unsigned `.app`，打包为 `dsh-mobile-preview-unsigned.ipa` 上传到该次 Actions 运行的 Artifacts。它不会发布 Release、提交签名证书或修改现有 Tauri IPA。
+## 构建
 
-本地有 Xcode 时，可在仓库内运行：
+GitHub Actions 的 `build-native-ios` 使用固定版本 XcodeGen 和固定提交的 [iroh-ffi Swift 包](https://github.com/n0-computer/iroh-ffi/tree/5e451092dba0c1a09ee83ff6e5be37b1152a5c58)，构建 unsigned iPhone arm64 IPA 并上传该次运行的 Artifacts；不会发布 Release 或持有签名凭据。Hoya 可对候选 IPA 自行签名安装。
+
+本地有完整 Xcode 时，在仓库内运行：
 
 ```sh
 swift test --package-path ios-native/ProtocolKit --scratch-path ios-native/ProtocolKit/.build
 xcodegen generate --spec ios-native/project.yml --project ios-native
-xcodebuild -project ios-native/DSHMobilePreview.xcodeproj -scheme DSHMobilePreview \
+xcodebuild -project ios-native/DSHMobile.xcodeproj -scheme DSHMobile \
   -configuration Release -destination 'generic/platform=iOS' \
-  -derivedDataPath ios-native/.derivedData CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath ios-native/.derivedData \
+  -clonedSourcePackagesDirPath ios-native/.packages CODE_SIGNING_ALLOWED=NO build
 ```
 
-只有 Command Line Tools、缺少完整 Xcode/XCTest 的 Mac，可以运行 `sh ios-native/scripts/test-protocol-local.sh` 做协议烟测。所有主动生成的工程、缓存与产物都留在 `ios-native/` 内，并被 Git 忽略。未签名 IPA 需要 Hoya 自行签名后才能安装；构建成功不等于配对或蜂窝网络实机验收。
-
-## 下一阶段接入条件
-
-1. 固定并验证官方 iroh Swift 绑定与 host 的 ALPN `dsh-tether/0`、Pair/Hello、Proxy 流互通；私钥只存 iOS Keychain，已配对设备保存在 App 沙盒。新 Bundle ID 不自动继承旧客户端身份。
-2. 经当前受控 Mac 代理调用 DSH 0.2.0-rc.2 的 `/api/<namespace>/<method>` 和 `/api/remote.mux`，完成列表、历史、发送、取消、工作模式及一次性审批闭环。
-3. 以真实接口来源核准 Token 用量口径，才替换演示热力图；第三方插件页面需要独立适配。
-
-删除此试用 App 时，iOS 沙盒会被系统清理；若后续版本写入 Keychain，卸载不保证清除 Keychain 项，须提供 App 内解除配对。此版本未建立身份、配对记录或本机服务，因此没有新增 Mac DSH 残留。
+CI 编译和可签名 IPA 不能代替与家中 Mac 的真机配对、Wi-Fi/蜂窝和审批闭环验收；未取得这些证据前，产物标记为候选版。

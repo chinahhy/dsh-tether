@@ -1,15 +1,14 @@
 import SwiftUI
 
-enum PreviewStyle {
+enum MobileStyle {
     static let blue = Color(red: 0.20, green: 0.40, blue: 0.98)
     static let canvas = Color(red: 0.97, green: 0.98, blue: 1.00)
     static let ink = Color(red: 0.08, green: 0.13, blue: 0.23)
     static let muted = Color(red: 0.54, green: 0.60, blue: 0.70)
 }
 
-enum WorkMode: String, CaseIterable, Identifiable {
+private enum WorkMode: String, CaseIterable, Identifiable {
     case standard, ptc, minimal, cordis
-
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -19,78 +18,54 @@ enum WorkMode: String, CaseIterable, Identifiable {
         case .cordis: "创造模式"
         }
     }
-    var detail: String {
-        switch self {
-        case .standard: "处理代码、文件和资料，适合大多数任务。"
-        case .ptc: "批量调用工具，整理和汇总结果。"
-        case .minimal: "仅使用终端工具，适合测试基础能力。"
-        case .cordis: "通过对话编写插件，扩展 DSH。"
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .standard: "doc.text"
-        case .ptc: "chart.bar.xaxis"
-        case .minimal: "chevron.left.forwardslash.chevron.right"
-        case .cordis: "puzzlepiece.extension"
-        }
-    }
-}
-
-struct DemoSession: Identifiable {
-    let id: String
-    let title: String
-    let workspace: String
-    let mode: WorkMode
-    let preview: String
-    let time: String
-    let today: Bool
-
-    static let examples: [Self] = [
-        .init(id: "ios", title: "规划 iOS 客户端", workspace: "DSH-plugins", mode: .cordis,
-              preview: "先把核心操作放进手机，再逐步适配。", time: "刚刚", today: true),
-        .init(id: "relay", title: "检查自建中继连接", workspace: "DSH-plugins", mode: .standard,
-              preview: "连接成功，接下来验证蜂窝网络切换。", time: "12:08", today: true),
-        .init(id: "quota", title: "优化额度显示", workspace: "DSH-plugins", mode: .ptc,
-              preview: "让额度信息更清晰，刷新状态更直观。", time: "10:32", today: true),
-        .init(id: "network", title: "整理家庭网络", workspace: "家庭网络", mode: .standard,
-              preview: "已整理设备清单与下一步检查事项。", time: "昨天", today: false),
-        .init(id: "readme", title: "完善插件使用说明", workspace: "DSH-plugins", mode: .minimal,
-              preview: "安装、卸载与残留路径已经列清楚。", time: "昨天", today: false),
-    ]
 }
 
 struct MobileRootView: View {
-    @State private var sessions = DemoSession.examples
+    @StateObject private var model = MobileModel()
 
     var body: some View {
         TabView {
             NavigationStack {
-                SessionsView(sessions: $sessions)
+                SessionsScreen(model: model)
             }
             .tabItem { Label("会话", systemImage: "bubble.left") }
 
             NavigationStack {
-                SettingsView()
+                SettingsScreen(model: model)
             }
             .tabItem { Label("设置", systemImage: "gearshape") }
+        }
+        .tint(MobileStyle.blue)
+        .alert("操作失败", isPresented: Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )) {
+            Button("知道了") { model.errorMessage = nil }
+        } message: {
+            Text(model.errorMessage ?? "")
         }
     }
 }
 
 private struct DeviceHeader: View {
+    @ObservedObject var model: MobileModel
+
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "desktopcomputer")
-                .foregroundStyle(PreviewStyle.muted)
-            Text("Mac mini M4")
-                .foregroundStyle(PreviewStyle.ink)
+                .foregroundStyle(MobileStyle.muted)
+            Text(model.currentHostName)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-            Spacer(minLength: 12)
-            Text("界面预览")
+                .foregroundStyle(MobileStyle.ink)
+            Circle()
+                .fill(model.connected ? .green : MobileStyle.muted)
+                .frame(width: 6, height: 6)
+            Spacer(minLength: 8)
+            Text(model.status)
                 .font(.caption)
-                .foregroundStyle(PreviewStyle.muted)
+                .foregroundStyle(MobileStyle.muted)
+                .lineLimit(1)
         }
         .font(.subheadline)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,132 +73,135 @@ private struct DeviceHeader: View {
     }
 }
 
-private struct PreviewNotice: View {
-    var body: some View {
-        Label("界面试用版 · 演示数据 · 尚未连接电脑", systemImage: "info.circle")
-            .font(.caption)
-            .foregroundStyle(PreviewStyle.muted)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(PreviewStyle.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct SessionsView: View {
-    @Binding var sessions: [DemoSession]
+private struct SessionsScreen: View {
+    @ObservedObject var model: MobileModel
     @State private var query = ""
-    @State private var modeFilter: WorkMode?
-    @State private var showingNew = false
+    @State private var selectedMode: WorkMode?
+    @State private var showingCreate = false
 
-    private var visible: [DemoSession] {
-        sessions.filter { session in
-            (modeFilter == nil || session.mode == modeFilter) &&
-            (query.isEmpty || session.title.localizedCaseInsensitiveContains(query) ||
-             session.workspace.localizedCaseInsensitiveContains(query))
+    private var visible: [RemoteSession] {
+        model.sessions.filter { session in
+            (selectedMode == nil || session.mode == selectedMode?.rawValue) &&
+            (query.isEmpty ||
+             session.title.localizedCaseInsensitiveContains(query) ||
+             session.cwd.localizedCaseInsensitiveContains(query))
         }
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                DeviceHeader()
-                PreviewNotice()
+            VStack(alignment: .leading, spacing: 18) {
+                DeviceHeader(model: model)
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("会话").font(.largeTitle.bold()).foregroundStyle(PreviewStyle.ink)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("会话")
+                            .font(.largeTitle.bold())
+                            .foregroundStyle(MobileStyle.ink)
                         Text("家里的进展，随时继续。")
-                            .font(.subheadline).foregroundStyle(PreviewStyle.muted)
+                            .font(.subheadline)
+                            .foregroundStyle(MobileStyle.muted)
                     }
                     Spacer()
-                    Button { showingNew = true } label: {
+                    Button { showingCreate = true } label: {
                         Image(systemName: "plus")
                             .font(.title3)
                             .frame(width: 44, height: 44)
-                            .background(PreviewStyle.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
+                            .background(MobileStyle.blue.opacity(0.09),
+                                        in: RoundedRectangle(cornerRadius: 13))
                     }
+                    .disabled(!model.connected)
                     .accessibilityLabel("新建任务")
                 }
-                TextField("搜索会话或工作区", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
 
-                Menu {
-                    Button("全部模式") { modeFilter = nil }
-                    ForEach(WorkMode.allCases) { mode in
-                        Button(mode.title) { modeFilter = mode }
+                if !model.connected {
+                    Label("请先在设置中配对或连接电脑", systemImage: "wifi.slash")
+                        .font(.subheadline)
+                        .foregroundStyle(MobileStyle.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                } else {
+                    approvalCards
+                    TextField("搜索会话或工作区", text: $query)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                    Menu {
+                        Button("全部模式") { selectedMode = nil }
+                        ForEach(WorkMode.allCases) { mode in
+                            Button(mode.title) { selectedMode = mode }
+                        }
+                    } label: {
+                        Label(selectedMode?.title ?? "全部模式",
+                              systemImage: "line.3.horizontal.decrease")
+                            .font(.subheadline)
                     }
-                } label: {
-                    HStack {
-                        Image(systemName: "line.3.horizontal.decrease")
-                        Text(modeFilter?.title ?? "全部模式")
-                        Image(systemName: "chevron.down").font(.caption2)
+                    if visible.isEmpty {
+                        ContentUnavailableView(
+                            query.isEmpty ? "还没有会话" : "没有匹配的会话",
+                            systemImage: "bubble.left"
+                        )
+                    } else {
+                        ForEach(visible) { session in
+                            NavigationLink {
+                                ConversationScreen(model: model, session: session)
+                            } label: {
+                                SessionCard(session: session)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .font(.subheadline)
-                }
-
-                sessionGroup("今天", sessions: visible.filter(\.today))
-                sessionGroup("昨天", sessions: visible.filter { !$0.today })
-                if visible.isEmpty {
-                    ContentUnavailableView.search(text: query)
                 }
             }
             .padding(20)
         }
-        .background(PreviewStyle.canvas)
+        .background(MobileStyle.canvas)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showingNew) {
-            NewSessionSheet(sessions: $sessions)
+        .refreshable { await model.refresh() }
+        .sheet(isPresented: $showingCreate) {
+            NewTaskSheet(model: model)
         }
     }
 
     @ViewBuilder
-    private func sessionGroup(_ title: String, sessions: [DemoSession]) -> some View {
-        if !sessions.isEmpty {
-            VStack(alignment: .leading, spacing: 7) {
-                Text("\(title) · \(sessions.count)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PreviewStyle.muted)
-                    .padding(.bottom, 4)
-                ForEach(sessions) { session in
-                    NavigationLink {
-                        ConversationView(session: session)
-                    } label: {
-                        SessionRow(session: session)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+    private var approvalCards: some View {
+        ForEach(model.approvals) { approval in
+            ApprovalCard(model: model, approval: approval)
         }
     }
 }
 
-private struct SessionRow: View {
-    let session: DemoSession
+private struct SessionCard: View {
+    let session: RemoteSession
+
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
             Image(systemName: "bubble.left")
                 .font(.title3)
-                .foregroundStyle(PreviewStyle.blue)
+                .foregroundStyle(MobileStyle.blue)
                 .frame(width: 42, height: 42)
-                .background(PreviewStyle.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .background(MobileStyle.blue.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(session.title).font(.subheadline.weight(.semibold))
-                        .foregroundStyle(PreviewStyle.ink)
+                    Text(session.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MobileStyle.ink)
                     Spacer(minLength: 8)
-                    Text(session.time).font(.caption2).foregroundStyle(PreviewStyle.muted)
-                }
-                Text(session.preview).font(.caption).foregroundStyle(PreviewStyle.muted)
-                    .lineLimit(2)
-                HStack(spacing: 7) {
-                    Text(session.workspace)
-                    Text(session.mode.title)
-                        .foregroundStyle(PreviewStyle.blue)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(PreviewStyle.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                    if session.running {
+                        Text("进行中").foregroundStyle(MobileStyle.blue)
+                    } else {
+                        Text(session.updatedAt, style: .relative)
+                            .foregroundStyle(MobileStyle.muted)
+                    }
                 }
                 .font(.caption2)
-                .foregroundStyle(PreviewStyle.muted)
+                Text(session.cwd.isEmpty ? "默认工作区" : session.cwd)
+                    .font(.caption)
+                    .foregroundStyle(MobileStyle.muted)
+                    .lineLimit(2)
+                Text(WorkMode(rawValue: session.mode)?.title ?? session.mode)
+                    .font(.caption2)
+                    .foregroundStyle(MobileStyle.blue)
             }
         }
         .padding(15)
@@ -231,10 +209,41 @@ private struct SessionRow: View {
     }
 }
 
-private struct NewSessionSheet: View {
+private struct ApprovalCard: View {
+    @ObservedObject var model: MobileModel
+    let approval: PendingApproval
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("需要批准", systemImage: "checkmark.shield")
+                .font(.headline)
+            Text(approval.toolName.isEmpty ? "工具调用" : approval.toolName)
+                .font(.subheadline.weight(.semibold))
+            Text(approval.reason)
+                .font(.caption)
+                .foregroundStyle(MobileStyle.muted)
+            HStack {
+                Button("拒绝") {
+                    Task { await model.decide(approval, allow: false) }
+                }
+                .buttonStyle(.bordered)
+                Button("仅允许这次") {
+                    Task { await model.decide(approval, allow: true) }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.white, in: RoundedRectangle(cornerRadius: 15))
+    }
+}
+
+private struct NewTaskSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Binding var sessions: [DemoSession]
+    @ObservedObject var model: MobileModel
     @State private var title = ""
+    @State private var cwd = ""
     @State private var mode: WorkMode = .standard
 
     var body: some View {
@@ -243,94 +252,70 @@ private struct NewSessionSheet: View {
                 Section("任务名称") {
                     TextField("例如：检查今天的构建", text: $title)
                 }
-                Section {
-                    ForEach(WorkMode.allCases) { option in
-                        Button { mode = option } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: option.symbol)
-                                    .frame(width: 26).foregroundStyle(PreviewStyle.blue)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(option.title).font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(PreviewStyle.ink)
-                                    Text(option.detail).font(.caption).foregroundStyle(PreviewStyle.muted)
-                                }
-                                Spacer()
-                                if mode == option { Image(systemName: "checkmark.circle.fill") }
-                            }
+                Section("电脑上的工作目录") {
+                    TextField("留空使用 DSH 默认目录", text: $cwd)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section("工作模式") {
+                    Picker("工作模式", selection: $mode) {
+                        ForEach(WorkMode.allCases) { option in
+                            Text(option.title).tag(option)
                         }
                     }
-                } header: { Text("工作模式") }
-                  footer: { Text("这里只创建演示任务，不会发送到家里的 DSH。") }
+                }
             }
             .navigationTitle("新建任务")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("创建") {
-                        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !name.isEmpty else { return }
-                        sessions.insert(.init(id: UUID().uuidString, title: name, workspace: "DSH-plugins",
-                                              mode: mode, preview: "新建的演示任务", time: "刚刚", today: true), at: 0)
-                        dismiss()
+                        Task {
+                            await model.create(title: title, cwd: cwd, mode: mode.rawValue)
+                            if model.errorMessage == nil { dismiss() }
+                        }
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || model.busy)
                 }
             }
+            .onAppear { cwd = model.sessions.first?.cwd ?? "" }
         }
     }
 }
 
-private struct DemoMessage: Identifiable {
-    let id = UUID()
-    let fromUser: Bool
-    let text: String
-}
-
-struct ConversationView: View {
-    let session: DemoSession
+private struct ConversationScreen: View {
+    @ObservedObject var model: MobileModel
+    let session: RemoteSession
     @State private var draft = ""
-    @State private var approval = "pending"
-    @State private var messages: [DemoMessage]
-
-    init(session: DemoSession) {
-        self.session = session
-        if session.id == "ios" {
-            _messages = State(initialValue: [
-                .init(fromUser: true, text: "帮我做一个专用的手机客户端，保留现在的配对和自建中继。"),
-                .init(fromUser: false, text: "可以。先把核心操作放进手机，再逐步适配其他能力。"),
-                .init(fromUser: false, text: "首版先让会话、工作模式和任务内批准在手机上好用。"),
-            ])
-        } else {
-            _messages = State(initialValue: [.init(fromUser: false, text: session.preview)])
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    PreviewNotice()
-                    HStack {
-                        Image(systemName: session.mode.symbol)
-                        Text(session.mode.title)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PreviewStyle.blue)
-                    ForEach(messages) { message in
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    Text(session.cwd)
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
+                    ForEach(model.messages) { message in
                         HStack {
-                            if message.fromUser { Spacer(minLength: 44) }
+                            if message.fromUser { Spacer(minLength: 40) }
                             Text(message.text)
                                 .font(.subheadline)
-                                .foregroundStyle(PreviewStyle.ink)
+                                .foregroundStyle(MobileStyle.ink)
                                 .padding(14)
-                                .background(message.fromUser ? PreviewStyle.blue.opacity(0.10) : .white,
-                                            in: RoundedRectangle(cornerRadius: 15))
+                                .background(
+                                    message.fromUser
+                                        ? MobileStyle.blue.opacity(0.10) : .white,
+                                    in: RoundedRectangle(cornerRadius: 15)
+                                )
                             if !message.fromUser { Spacer(minLength: 30) }
                         }
                     }
-                    if session.id == "ios" {
-                        approvalCard
+                    ForEach(model.approvals) { approval in
+                        ApprovalCard(model: model, approval: approval)
                     }
                 }
                 .padding(18)
@@ -339,18 +324,18 @@ struct ConversationView: View {
                 TextField("输入消息…", text: $draft, axis: .vertical)
                     .lineLimit(1...4)
                     .padding(10)
-                    .background(PreviewStyle.canvas, in: RoundedRectangle(cornerRadius: 12))
+                    .background(MobileStyle.canvas,
+                                in: RoundedRectangle(cornerRadius: 12))
                 Button {
                     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return }
-                    messages.append(.init(fromUser: true, text: text))
-                    messages.append(.init(fromUser: false, text: "这是界面演示；消息没有发送到电脑。"))
                     draft = ""
+                    Task { await model.send(text) }
                 } label: {
                     Image(systemName: "arrow.up")
                         .fontWeight(.bold)
                         .frame(width: 39, height: 39)
-                        .background(PreviewStyle.blue, in: Circle())
+                        .background(MobileStyle.blue, in: Circle())
                         .foregroundStyle(.white)
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -358,90 +343,118 @@ struct ConversationView: View {
             .padding(12)
             .background(.white)
         }
-        .background(PreviewStyle.canvas)
+        .background(MobileStyle.canvas)
         .navigationTitle(session.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-    }
-
-    private var approvalCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("需要批准", systemImage: "checkmark.shield")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(PreviewStyle.ink)
-            Text("Shell · 运行前端构建")
-                .font(.subheadline).foregroundStyle(PreviewStyle.ink)
-            Text("检查页面能否正常打包，不修改电脑上的 DSH。")
-                .font(.caption).foregroundStyle(PreviewStyle.muted)
-            if approval == "pending" {
-                HStack {
-                    Button("拒绝") { approval = "denied" }
-                        .buttonStyle(.bordered)
-                    Button("仅允许这次") { approval = "allowed" }
-                        .buttonStyle(.borderedProminent)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("停止", systemImage: "stop.fill") {
+                    Task { await model.stop() }
                 }
-            } else {
-                Text(approval == "allowed" ? "已在演示中允许" : "已在演示中拒绝")
-                    .font(.caption).foregroundStyle(PreviewStyle.blue)
+                .labelStyle(.iconOnly)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .background(.white, in: RoundedRectangle(cornerRadius: 15))
+        .onAppear { model.open(session.id) }
+        .onDisappear { model.closeSession() }
     }
 }
 
-struct SettingsView: View {
-    @State private var relay = "自建中继"
+private struct SettingsScreen: View {
+    @ObservedObject var model: MobileModel
+    @State private var pairing = ""
+    @State private var label = "Mac mini M4"
+    @State private var showingClearConfirmation = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                DeviceHeader()
-                PreviewNotice()
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("设置").font(.largeTitle.bold()).foregroundStyle(PreviewStyle.ink)
-                    Text("连接、插件和使用偏好。")
-                        .font(.subheadline).foregroundStyle(PreviewStyle.muted)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Mac mini M4", systemImage: "desktopcomputer")
+            VStack(alignment: .leading, spacing: 18) {
+                DeviceHeader(model: model)
+                Text("设置").font(.largeTitle.bold()).foregroundStyle(MobileStyle.ink)
+                VStack(alignment: .leading, spacing: 12) {
+                    Label(model.currentHostName, systemImage: "desktopcomputer")
                         .font(.headline)
-                    Text("尚未连接 · 原生版目前只展示界面")
-                        .font(.caption).foregroundStyle(PreviewStyle.muted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(17)
-                .background(.white, in: RoundedRectangle(cornerRadius: 15))
-
-                VStack(alignment: .leading, spacing: 11) {
-                    Text("中继").font(.headline)
-                    Picker("中继", selection: $relay) {
-                        Text("公共中继").tag("公共中继")
-                        Text("自建中继").tag("自建中继")
+                    Text(model.status)
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
+                    if model.connected {
+                        Button("断开连接") { Task { await model.disconnect() } }
+                    } else if let id = model.currentHostId {
+                        Button("重新连接") { Task { await model.connect(id: id) } }
+                            .disabled(model.busy)
                     }
-                    .pickerStyle(.segmented)
-                    Text("仅预览开关样式，不会切换实际网络。")
-                        .font(.caption).foregroundStyle(PreviewStyle.muted)
+                    ForEach(model.hosts) { host in
+                        if host.id != model.currentHostId {
+                            Button(host.label) { Task { await model.connect(id: host.id) } }
+                                .disabled(model.busy)
+                        }
+                    }
                 }
-                .padding(17)
-                .background(.white, in: RoundedRectangle(cornerRadius: 15))
+                .settingsCard()
 
-                VStack(alignment: .leading, spacing: 7) {
-                    Label("插件功能", systemImage: "puzzlepiece.extension")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("配对新电脑").font(.headline)
+                    TextField("电脑 ID#六位配对码", text: $pairing)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("设备名称", text: $label)
+                    Button("配对并连接") {
+                        Task {
+                            await model.pair(pairing, label: label)
+                            if model.connected { pairing = "" }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.busy || pairing.isEmpty)
+                }
+                .settingsCard()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("中继").font(.headline)
+                    Text("电脑当前配置：\(model.relayMode)")
+                    Text("可在家里电脑的 DSH 插件中切换公共或自建中继。")
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
+                    Button("刷新状态") { Task { await model.refreshRelay() } }
+                        .disabled(!model.connected)
+                }
+                .settingsCard()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("插件与 Token 活动", systemImage: "puzzlepiece.extension")
                         .font(.headline)
-                    Text("目前展示设置入口。插件列表、配置和执行仍需接入真实 DSH 服务。")
-                        .font(.caption).foregroundStyle(PreviewStyle.muted)
+                    Text("原生插件管理与用量统计尚未接入真实数据。")
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(17)
-                .background(.white, in: RoundedRectangle(cornerRadius: 15))
+                .settingsCard()
 
-                TokenActivityView()
+                if !model.hosts.isEmpty {
+                    Button("清除本机配对与身份", role: .destructive) {
+                        showingClearConfirmation = true
+                    }
+                    .font(.caption)
+                }
             }
             .padding(20)
         }
-        .background(PreviewStyle.canvas)
+        .background(MobileStyle.canvas)
         .toolbar(.hidden, for: .navigationBar)
+        .confirmationDialog(
+            "清除本机配对？Mac 端记录仍需在电脑上单独撤销。",
+            isPresented: $showingClearConfirmation
+        ) {
+            Button("清除本机配对", role: .destructive) {
+                Task { await model.clearPairing() }
+            }
+        }
+    }
+}
+
+private extension View {
+    func settingsCard() -> some View {
+        self.frame(maxWidth: .infinity, alignment: .leading)
+            .padding(17)
+            .background(.white, in: RoundedRectangle(cornerRadius: 15))
     }
 }

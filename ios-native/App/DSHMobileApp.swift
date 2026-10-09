@@ -1,11 +1,11 @@
 import SwiftUI
 
 @main
-struct DSHMobilePreviewApp: App {
+struct DSHMobileApp: App {
     var body: some Scene {
         WindowGroup {
             MobileRootView()
-                .tint(PreviewStyle.blue)
+                .tint(MobileStyle.blue)
         }
     }
 }
