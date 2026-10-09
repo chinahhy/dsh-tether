@@ -103,6 +103,7 @@ actor WebSocketProxy {
                 try await sendFrame(opcode: 10, payload: payload)
                 continue
             }
+            if opcode == 10 { continue }
             guard opcode == 1 || opcode == 0 else { throw MobileConnectionError.invalidHTTP }
             text.append(payload)
             if final { return try JSONDecoder().decode(JSONValue.self, from: text) }
