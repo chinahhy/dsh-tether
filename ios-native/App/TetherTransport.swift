@@ -76,6 +76,13 @@ actor TetherTransport {
                     throw MobileConnectionError.pairingRejected(reason)
                 default: throw MobileConnectionError.invalidPairing
                 }
+            } else {
+                // Hello has no acknowledgement. Verify that the Mac still trusts
+                // this identity before treating a cached host as connected.
+                _ = try await request(
+                    path: "/dsh-tether/relay", method: "GET",
+                    headers: ["x-dsh-tether-control": "1"]
+                )
             }
         } catch {
             await disconnect()

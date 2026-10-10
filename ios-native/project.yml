@@ -30,8 +30,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: DSH Mobile
-        CFBundleShortVersionString: 1.0.4
-        CFBundleVersion: '5'
+        CFBundleShortVersionString: 1.0.5
+        CFBundleVersion: '6'
         LSRequiresIPhoneOS: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

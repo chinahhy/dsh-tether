@@ -59,20 +59,24 @@ final class MobileModel: ObservableObject {
             errorMessage = MobileConnectionError.invalidPairing.localizedDescription
             return
         }
-        // The host rejects Pair for an identity that is already on its allowlist.
-        // A second tap after PairOK must use Hello, even if the user left the code pasted.
+        // A saved phone may have been revoked on the Mac. Validate Hello first;
+        // if it fails, use the fresh ticket to pair the same identity again.
         let known = hosts.contains(where: { $0.id == ticket.endpointId })
-        await establish(id: ticket.endpointId, code: known ? nil : ticket.code,
-                        label: label, relayURLs: ticket.relayURLs)
+        if known, await establish(id: ticket.endpointId, code: nil,
+                                  label: label, relayURLs: ticket.relayURLs) {
+            return
+        }
+        _ = await establish(id: ticket.endpointId, code: ticket.code,
+                            label: label, relayURLs: ticket.relayURLs)
     }
 
     func connect(id: String) async {
-        await establish(id: id, code: nil, label: nil,
-                        relayURLs: hosts.first(where: { $0.id == id })?.relayURLs ?? [])
+        _ = await establish(id: id, code: nil, label: nil,
+                            relayURLs: hosts.first(where: { $0.id == id })?.relayURLs ?? [])
     }
 
-    private func establish(id: String, code: String?, label: String?, relayURLs: [String]) async {
-        guard !busy else { return }
+    private func establish(id: String, code: String?, label: String?, relayURLs: [String]) async -> Bool {
+        guard !busy else { return false }
         busy = true
         status = code == nil ? "正在连接…" : "正在配对…"
         errorMessage = nil
@@ -105,8 +109,11 @@ final class MobileModel: ObservableObject {
         } catch {
             status = "连接失败"
             errorMessage = error.localizedDescription
+            busy = false
+            return false
         }
         busy = false
+        return true
     }
 
     func disconnect() async {
