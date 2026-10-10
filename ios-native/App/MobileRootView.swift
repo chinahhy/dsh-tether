@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum MobileStyle {
     static let blue = Color(uiColor: .systemBlue)
@@ -389,6 +390,28 @@ private struct SettingsScreen: View {
                             Button(host.label) { Task { await model.connect(id: host.id) } }
                                 .disabled(model.busy)
                         }
+                    }
+                }
+                .settingsCard()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("此 iPhone 的连接 ID", systemImage: "iphone.gen3")
+                        .font(.headline)
+                    Text("自建中继启用设备白名单时，需要把这个公开 ID 加入允许列表。它不是配对码，也不是私钥。")
+                        .font(.caption)
+                        .foregroundStyle(MobileStyle.muted)
+                    if let endpointId = model.localEndpointId {
+                        Text(endpointId)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                        Button("复制连接 ID") {
+                            UIPasteboard.general.string = endpointId
+                        }
+                    } else {
+                        Text("正在读取连接 ID…")
+                            .font(.caption)
+                            .foregroundStyle(MobileStyle.muted)
+                        Button("重试") { Task { await model.refreshLocalEndpointId() } }
                     }
                 }
                 .settingsCard()

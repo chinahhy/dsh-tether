@@ -37,6 +37,12 @@ actor TetherTransport {
     private var lines = WireLineBuffer()
     private var pending: [TetherWire] = []
 
+    func localEndpointId() throws -> String {
+        let key = try MobileIdentity.loadOrCreate()
+        let publicKey = try SecretKey.fromBytes(bytes: key).public().toBytes()
+        return publicKey.map { String(format: "%02x", $0) }.joined()
+    }
+
     func connect(id: String, pairingCode: String? = nil, relayURLs: [String] = []) async throws {
         await disconnect()
         let key = try MobileIdentity.loadOrCreate()

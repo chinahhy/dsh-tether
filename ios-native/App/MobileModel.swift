@@ -19,6 +19,7 @@ final class MobileModel: ObservableObject {
     @Published private(set) var messages: [RemoteMessage] = []
     @Published private(set) var approvals: [PendingApproval] = []
     @Published private(set) var relayMode = "未知"
+    @Published private(set) var localEndpointId: String?
     @Published private(set) var plugins: [RemotePlugin] = []
     @Published private(set) var pluginState = "连接后读取"
     @Published private(set) var tokenDays: [TokenDay] = []
@@ -39,9 +40,14 @@ final class MobileModel: ObservableObject {
             hosts = saved
         }
         currentHostId = UserDefaults.standard.string(forKey: Self.currentKey)
+        Task { await refreshLocalEndpointId() }
         if let id = currentHostId, hosts.contains(where: { $0.id == id }) {
             Task { await connect(id: id) }
         }
+    }
+
+    func refreshLocalEndpointId() async {
+        localEndpointId = try? await transport.localEndpointId()
     }
 
     var currentHostName: String {
@@ -127,6 +133,7 @@ final class MobileModel: ObservableObject {
         currentHostId = nil
         UserDefaults.standard.removeObject(forKey: Self.hostsKey)
         UserDefaults.standard.removeObject(forKey: Self.currentKey)
+        await refreshLocalEndpointId()
     }
 
     func refresh() async {
