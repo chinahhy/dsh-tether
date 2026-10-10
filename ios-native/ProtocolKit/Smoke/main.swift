@@ -20,7 +20,10 @@ struct ProtocolSmoke {
         let ticket = PairingTicket(raw: "\(endpointId.prefix(40))\n\(endpointId.suffix(24))#123456")
         precondition(ticket?.endpointId == endpointId.lowercased())
         precondition(ticket?.code == "123456")
+        let privateTicket = PairingTicket(raw: "\(endpointId)#123456#https://relay.example.test:6270/")
+        precondition(privateTicket?.relayURLs == ["https://relay.example.test:6270/"])
         precondition(PairingTicket(raw: "123456") == nil)
+        precondition(PairingTicket(raw: "\(endpointId)#123456#http://relay.example.test/") == nil)
         do {
             _ = try TetherWireCodec.decode(Data(repeating: 65, count: 513), unpaired: true)
             fatalError("oversized unpaired line accepted")

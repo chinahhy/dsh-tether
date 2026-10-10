@@ -8,9 +8,15 @@ final class ProtocolTests: XCTestCase {
         let ticket = PairingTicket(raw: "  \(id.prefix(40))\n\(id.suffix(24))# 123456 \n")
         XCTAssertEqual(ticket?.endpointId, id.lowercased())
         XCTAssertEqual(ticket?.code, "123456")
+        XCTAssertEqual(ticket?.relayURLs, [])
+        let privateTicket = PairingTicket(raw: "\(id)#123456#https://relay.example.test:6270/")
+        XCTAssertEqual(privateTicket?.relayURLs, ["https://relay.example.test:6270/"])
         XCTAssertNil(PairingTicket(raw: "123456"))
         XCTAssertNil(PairingTicket(raw: "\(id)#12345"))
         XCTAssertNil(PairingTicket(raw: "\(id)#123456#extra"))
+        XCTAssertNil(PairingTicket(raw: "\(id)#123456#http://relay.example.test/"))
+        XCTAssertNil(PairingTicket(raw: "\(id)#123456#https://user:secret@relay.example.test/"))
+        XCTAssertNil(PairingTicket(raw: "\(id)#123456#https://relay.example.test/path"))
     }
 
     func testWireUsesHostTagsAndSnakeCaseFields() throws {

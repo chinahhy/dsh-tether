@@ -5,21 +5,39 @@ import Foundation
 public struct PairingTicket: Equatable, Sendable {
     public let endpointId: String
     public let code: String
+    public let relayURLs: [String]
 
     public init?(raw: String) {
         let compact = raw.unicodeScalars.filter {
             !CharacterSet.whitespacesAndNewlines.contains($0)
         }.map(String.init).joined()
         let parts = compact.split(separator: "#", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts[0].utf8.count == 64,
+        guard compact.utf8.count <= 2048,
+              (parts.count == 2 || parts.count == 3), parts[0].utf8.count == 64,
               parts[0].utf8.allSatisfy({
                   ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 70) || ($0 >= 97 && $0 <= 102)
               }),
               parts[1].utf8.count == 6,
               parts[1].utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
         else { return nil }
+        var relays: [String] = []
+        if parts.count == 3 {
+            let values = parts[2].split(separator: ",", omittingEmptySubsequences: false)
+            guard !values.isEmpty, values.count <= 4 else { return nil }
+            for value in values {
+                guard let url = URL(string: String(value)),
+                      url.scheme?.lowercased() == "https",
+                      let host = url.host, !host.isEmpty,
+                      url.user == nil, url.password == nil,
+                      url.path == "" || url.path == "/",
+                      url.query == nil, url.fragment == nil
+                else { return nil }
+                relays.append(url.absoluteString)
+            }
+        }
         endpointId = String(parts[0]).lowercased()
         code = String(parts[1])
+        relayURLs = Array(Set(relays)).sorted()
     }
 }
 

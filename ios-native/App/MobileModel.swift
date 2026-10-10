@@ -5,6 +5,7 @@ import DSHMobileProtocol
 struct PairedHost: Codable, Identifiable, Equatable {
     let id: String
     var label: String
+    var relayURLs: [String]?
 }
 
 @MainActor
@@ -55,14 +56,16 @@ final class MobileModel: ObservableObject {
         // The host rejects Pair for an identity that is already on its allowlist.
         // A second tap after PairOK must use Hello, even if the user left the code pasted.
         let known = hosts.contains(where: { $0.id == ticket.endpointId })
-        await establish(id: ticket.endpointId, code: known ? nil : ticket.code, label: label)
+        await establish(id: ticket.endpointId, code: known ? nil : ticket.code,
+                        label: label, relayURLs: ticket.relayURLs)
     }
 
     func connect(id: String) async {
-        await establish(id: id, code: nil, label: nil)
+        await establish(id: id, code: nil, label: nil,
+                        relayURLs: hosts.first(where: { $0.id == id })?.relayURLs ?? [])
     }
 
-    private func establish(id: String, code: String?, label: String?) async {
+    private func establish(id: String, code: String?, label: String?, relayURLs: [String]) async {
         guard !busy else { return }
         busy = true
         status = code == nil ? "正在连接…" : "正在配对…"
@@ -72,10 +75,11 @@ final class MobileModel: ObservableObject {
         connected = false
         approvals = []
         do {
-            try await transport.connect(id: id, pairingCode: code)
-            if code != nil {
+            try await transport.connect(id: id, pairingCode: code, relayURLs: relayURLs)
+            if label != nil {
                 let name = (label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let record = PairedHost(id: id, label: name.isEmpty ? "家里的电脑" : name)
+                let record = PairedHost(id: id, label: name.isEmpty ? "家里的电脑" : name,
+                                        relayURLs: relayURLs)
                 if let index = hosts.firstIndex(where: { $0.id == id }) {
                     hosts[index] = record
                 } else {

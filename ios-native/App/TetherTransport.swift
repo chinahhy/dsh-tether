@@ -17,7 +17,7 @@ enum MobileConnectionError: LocalizedError {
         switch self {
         case .notConnected: "尚未连接电脑"
         case .closed: "与电脑的连接已断开"
-        case .invalidPairing: "请粘贴 Mac 插件显示的完整配对串：电脑 ID#6 位数字"
+    case .invalidPairing: "请粘贴 Mac 插件显示的完整 DSH Mobile 配对串；单独 6 位数字无法连接电脑"
         case .pairingRejected(let reason): "配对失败：\(reason)"
         case .emptyHTTP: "电脑已连接，但代理没有返回网页响应。请在设置中重新连接后重试"
         case .invalidHTTP: "电脑返回了无法读取的响应"
@@ -37,15 +37,16 @@ actor TetherTransport {
     private var lines = WireLineBuffer()
     private var pending: [TetherWire] = []
 
-    func connect(id: String, pairingCode: String? = nil) async throws {
+    func connect(id: String, pairingCode: String? = nil, relayURLs: [String] = []) async throws {
         await disconnect()
         let key = try MobileIdentity.loadOrCreate()
+        let mode = relayURLs.isEmpty ? nil : try RelayMode.customFromUrls(urls: relayURLs)
         let ep = try await Endpoint.bind(options: EndpointOptions(
-            preset: presetN0(), secretKey: key
+            preset: presetN0(), secretKey: key, relayMode: mode
         ))
         do {
             let peer = try EndpointId.fromString(s: id)
-            let addr = EndpointAddr(id: peer, relayUrl: nil, addresses: [])
+            let addr = EndpointAddr(id: peer, relayUrl: relayURLs.first, addresses: [])
             let conn = try await ep.connect(
                 addr: addr, alpn: Data(TetherWireCodec.alpn.utf8)
             )
